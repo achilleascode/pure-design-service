@@ -20,11 +20,11 @@ class Settings(BaseModel):
     vision_judge_model: str = "gemini-3-pro"
     vision_fallback_model: str = "claude-sonnet-4-7"
 
-    fast_mode: bool = True  # Vercel Hobby (10s) friendly: skip LLM prompt-build + vision-judge
-    max_attempts: int = 1
-    stage_timeout_gemini_s: int = 8
-    stage_timeout_judge_s: int = 3
-    stage_timeout_total_s: int = 9
+    fast_mode: bool = False  # True: skip LLM prompt-build + vision-judge (short-timeout hosts)
+    max_attempts: int = 2
+    stage_timeout_gemini_s: int = 40
+    stage_timeout_judge_s: int = 10
+    stage_timeout_total_s: int = 90
 
 
 @lru_cache(maxsize=1)
