@@ -6,7 +6,7 @@ import sys
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, SLOT_X, SLOT_Y, SLOT_W, SLOT_H, LOGO_Y, WARNING_Y, WARNING_H
+from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, LOGO_Y, LOGO_H, WARNING_Y, WARNING_STRIP_H
 
 
 def _synthetic_ki(color=(50, 130, 200, 255)) -> bytes:
@@ -22,57 +22,52 @@ def test_composite_dimensions():
     assert img.size == (TEMPLATE_W, TEMPLATE_H), f"Expected {TEMPLATE_W}x{TEMPLATE_H}, got {img.size}"
 
 
-def test_composite_slot_filled_with_ki_color():
+def test_composite_ki_fills_canvas():
     out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    cx = SLOT_X + SLOT_W // 2
-    cy = SLOT_Y + SLOT_H // 2
-    px = img.getpixel((cx, cy))
-    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"Slot centre not red, got {px}"
+    # KI is full-bleed: top half of image should be saturated red
+    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H // 4))
+    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"KI not full-bleed, got {px}"
 
 
-def test_composite_logo_preserved():
+def test_composite_logo_watermark_visible():
     out = composite(_synthetic_ki(color=(0, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    # Studio backdrop logo
-    px = img.getpixel((TEMPLATE_W // 2, 50))
-    assert max(px) > 100, f"Studio logo blacked out: {px}"
-    # Hardcoded //pure wordmark on paper
-    px2 = img.getpixel((TEMPLATE_W // 2, LOGO_Y + 40))
-    # logo is dark brown on white → at least one channel should be much darker than pure white
-    assert min(px2) < 200, f"Hardcoded pure logo not visible: {px2}"
+    # Logo is white on black canvas — scan the logo band for any bright pixel
+    bright = 0
+    for x in range(TEMPLATE_W // 4, 3 * TEMPLATE_W // 4):
+        for y in range(LOGO_Y, LOGO_Y + LOGO_H):
+            if max(img.getpixel((x, y))) > 180:
+                bright += 1
+                if bright > 50:
+                    return
+    assert False, f"Watermark logo not bright enough; bright={bright}"
 
 
-def test_composite_warning_visible():
-    out = composite(_synthetic_ki(color=(0, 100, 200, 255)))  # blue KI
+def test_composite_warning_strip_yellow():
+    out = composite(_synthetic_ki(color=(0, 100, 200, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    # Warning is yellow (R>200, G>200, B<100) — sample inside warning rectangle
-    px = img.getpixel((TEMPLATE_W // 2, WARNING_Y + WARNING_H // 2))
-    is_yellow = px[0] > 180 and px[1] > 180 and px[2] < 150
-    assert is_yellow, f"Warning yellow not visible at warning centre: {px}"
+    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H - WARNING_STRIP_H // 2))
+    assert px[0] > 200 and px[1] > 180 and px[2] < 100, f"Warning strip not yellow: {px}"
 
 
-def test_composite_domain_preserved():
-    out = composite(_synthetic_ki(color=(0, 0, 0, 255)))
+def test_composite_domain_under_warning():
+    out = composite(_synthetic_ki(color=(255, 255, 255, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H - 50))
-    assert max(px) > 80, f"Bottom domain area looks blacked out: {px}"
-
-
-def test_composite_buds_preserved():
-    out = composite(_synthetic_ki(color=(255, 0, 255, 255)))  # vivid magenta KI
-    img = Image.open(BytesIO(out)).convert("RGB")
-    # sample inside buds region (right-lower area)
-    px = img.getpixel((850, 1100))
-    r, g, b = px
-    is_magenta = (r > 200 and b > 200 and g < 100)
-    assert not is_magenta, f"Buds region was overwritten by KI magenta: {px}"
+    # Domain row should still show yellow strip BG with some dark pixels (text)
+    found_dark = False
+    for x in range(TEMPLATE_W // 4, 3 * TEMPLATE_W // 4):
+        px = img.getpixel((x, TEMPLATE_H - 20))
+        if max(px) < 120:
+            found_dark = True
+            break
+    assert found_dark, "Domain text not visible in lower strip"
 
 
 if __name__ == "__main__":
     test_composite_dimensions()
-    test_composite_slot_filled_with_ki_color()
-    test_composite_logo_preserved()
-    test_composite_domain_preserved()
-    test_composite_buds_preserved()
+    test_composite_ki_fills_canvas()
+    test_composite_logo_watermark_visible()
+    test_composite_warning_strip_yellow()
+    test_composite_domain_under_warning()
     print("All composite tests passed.")
