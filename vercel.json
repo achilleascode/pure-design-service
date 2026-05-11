@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/generate.py": { "maxDuration": 60 },
+    "api/generate.py": { "maxDuration": 10 },
     "api/image.py":    { "maxDuration": 10 },
     "api/jobs.py":     { "maxDuration": 10 }
   },
