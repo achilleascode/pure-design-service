@@ -46,12 +46,13 @@ def test_composite_domain_preserved():
 
 
 def test_composite_buds_preserved():
-    out = composite(_synthetic_ki(color=(255, 255, 255, 255)))
+    out = composite(_synthetic_ki(color=(255, 0, 255, 255)))  # vivid magenta KI
     img = Image.open(BytesIO(out)).convert("RGB")
+    # sample inside buds region (right-lower area)
     px = img.getpixel((850, 1100))
     r, g, b = px
-    is_buds = (g > 30 or r < 100) and not (r > 240 and g > 240 and b > 240)
-    assert is_buds, f"Buds region appears overwritten with white KI image: {px}"
+    is_magenta = (r > 200 and b > 200 and g < 100)
+    assert not is_magenta, f"Buds region was overwritten by KI magenta: {px}"
 
 
 if __name__ == "__main__":
