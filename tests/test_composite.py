@@ -1,0 +1,63 @@
+from io import BytesIO
+from pathlib import Path
+from PIL import Image
+
+import sys
+ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(ROOT))
+
+from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, SLOT_X, SLOT_Y, SLOT_W, SLOT_H
+
+
+def _synthetic_ki(color=(50, 130, 200, 255)) -> bytes:
+    img = Image.new("RGBA", (1024, 1536), color)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_composite_dimensions():
+    out = composite(_synthetic_ki())
+    img = Image.open(BytesIO(out))
+    assert img.size == (TEMPLATE_W, TEMPLATE_H), f"Expected {TEMPLATE_W}x{TEMPLATE_H}, got {img.size}"
+
+
+def test_composite_slot_filled_with_ki_color():
+    out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
+    img = Image.open(BytesIO(out)).convert("RGB")
+    cx = SLOT_X + SLOT_W // 2
+    cy = SLOT_Y + SLOT_H // 2
+    px = img.getpixel((cx, cy))
+    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"Slot centre not red, got {px}"
+
+
+def test_composite_logo_preserved():
+    out = composite(_synthetic_ki(color=(0, 0, 0, 255)))
+    img = Image.open(BytesIO(out)).convert("RGB")
+    px = img.getpixel((TEMPLATE_W // 2, 50))
+    assert max(px) > 100, f"Top logo area looks blacked out: {px}"
+
+
+def test_composite_domain_preserved():
+    out = composite(_synthetic_ki(color=(0, 0, 0, 255)))
+    img = Image.open(BytesIO(out)).convert("RGB")
+    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H - 50))
+    assert max(px) > 80, f"Bottom domain area looks blacked out: {px}"
+
+
+def test_composite_buds_preserved():
+    out = composite(_synthetic_ki(color=(255, 255, 255, 255)))
+    img = Image.open(BytesIO(out)).convert("RGB")
+    px = img.getpixel((850, 1100))
+    r, g, b = px
+    is_buds = (g > 30 or r < 100) and not (r > 240 and g > 240 and b > 240)
+    assert is_buds, f"Buds region appears overwritten with white KI image: {px}"
+
+
+if __name__ == "__main__":
+    test_composite_dimensions()
+    test_composite_slot_filled_with_ki_color()
+    test_composite_logo_preserved()
+    test_composite_domain_preserved()
+    test_composite_buds_preserved()
+    print("All composite tests passed.")

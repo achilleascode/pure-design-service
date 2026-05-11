@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+.env.local
+.venv/
+.vercel/
+.pytest_cache/
+.memsearch/
+.DS_Store
+tests/fixtures/_generated/
