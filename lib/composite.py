@@ -40,6 +40,18 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 LOGO_PATH = ASSETS_DIR / "pure_logo.png"
 WARNING_PATH = ASSETS_DIR / "warning.png"
 
+LOGO_TINT = (255, 255, 255)  # tint logo white for contrast over any KI bg
+
+
+def _tint(img: Image.Image, color: tuple[int, int, int]) -> Image.Image:
+    r, g, b, a = img.split()
+    return Image.merge("RGBA", (
+        Image.new("L", img.size, color[0]),
+        Image.new("L", img.size, color[1]),
+        Image.new("L", img.size, color[2]),
+        a,
+    ))
+
 
 def composite(ki_bytes: bytes) -> bytes:
     ki = Image.open(BytesIO(ki_bytes)).convert("RGBA")
@@ -61,11 +73,12 @@ def composite(ki_bytes: bytes) -> bytes:
         )
         canvas.alpha_composite(warn, (WARNING_X, WARNING_Y))
 
-    # 4) //pure logo watermark, top-center, NO drop shadow (clean overlay)
+    # 4) //pure logo watermark — white-tinted for contrast, no drop shadow
     if LOGO_PATH.exists():
         logo = Image.open(LOGO_PATH).convert("RGBA").resize(
             (LOGO_W, LOGO_H), Image.LANCZOS
         )
+        logo = _tint(logo, LOGO_TINT)
         canvas.alpha_composite(logo, (LOGO_X, LOGO_Y))
 
     out = BytesIO()
