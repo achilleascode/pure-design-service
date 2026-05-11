@@ -70,7 +70,6 @@ async def run(job_id: str, user_prompt: str, t_start: float) -> dict[str, Any]:
         jobs.update(
             job_id,
             status="done",
-            final_image_url=image_url,
             attempts=attempts_log,
             total_latency_ms=total,
         )
