@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from typing import Any
-import psycopg2
-from psycopg2.extras import RealDictCursor, Json
+
+
+def _has_db() -> bool:
+    return bool(os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL"))
 
 
 def _conn():
+    import psycopg2
     url = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL")
     if not url:
         raise RuntimeError("POSTGRES_URL not set")
@@ -17,6 +21,8 @@ def _conn():
 
 
 def insert(user_prompt: str, session_id: str | None) -> str:
+    if not _has_db():
+        return str(uuid.uuid4())
     with _conn() as c, c.cursor() as cur:
         cur.execute(
             """
@@ -29,8 +35,10 @@ def insert(user_prompt: str, session_id: str | None) -> str:
 
 
 def update(job_id: str, **fields: Any) -> None:
-    if not fields:
+    if not fields or not _has_db():
         return
+    import psycopg2
+    from psycopg2.extras import Json
     img_bytes = fields.pop("image_bytes", None)
     cols = list(fields.keys())
     values: list[Any] = []
@@ -53,6 +61,9 @@ def update(job_id: str, **fields: Any) -> None:
 
 
 def get(job_id: str) -> dict[str, Any] | None:
+    if not _has_db():
+        return None
+    from psycopg2.extras import RealDictCursor
     with _conn() as c, c.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
@@ -68,6 +79,8 @@ def get(job_id: str) -> dict[str, Any] | None:
 
 
 def get_image(job_id: str) -> tuple[bytes, str] | None:
+    if not _has_db():
+        return None
     with _conn() as c, c.cursor() as cur:
         cur.execute(
             "select image_bytes, image_mime from design_jobs where id = %s",
@@ -80,6 +93,9 @@ def get_image(job_id: str) -> tuple[bytes, str] | None:
 
 
 def recent(limit: int = 24) -> list[dict[str, Any]]:
+    if not _has_db():
+        return []
+    from psycopg2.extras import RealDictCursor
     with _conn() as c, c.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """

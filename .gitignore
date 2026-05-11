@@ -8,3 +8,4 @@ __pycache__/
 .memsearch/
 .DS_Store
 tests/fixtures/_generated/
+.vercel
