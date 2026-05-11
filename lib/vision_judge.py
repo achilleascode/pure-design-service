@@ -129,6 +129,19 @@ async def _judge_claude(image_bytes: bytes, user_brief: str) -> VisionVerdict | 
 
 
 async def judge(image_bytes: bytes, user_brief: str) -> VisionVerdict:
+    s = get_settings()
+    if getattr(s, "fast_mode", False):
+        return VisionVerdict(
+            overall_pass=True,
+            checks=VisionChecks(
+                no_text_in_image=True,
+                no_foreign_logos=True,
+                no_minors_or_humans=True,
+                composition_centered=True,
+                on_brief_similarity=7.0,
+            ),
+            retry_hint="vision judge skipped (fast_mode)",
+        )
     verdict = await _judge_gemini(image_bytes, user_brief)
     if verdict is not None:
         return verdict

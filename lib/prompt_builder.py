@@ -34,7 +34,7 @@ async def build(user_prompt: str, attempt: int = 0, retry_hint: str = "") -> Pro
     esc = ESCALATION[min(attempt, len(ESCALATION) - 1)]
     seed = random.randint(1, 2**31 - 1)
 
-    if not settings.gemini_api_key:
+    if not settings.gemini_api_key or getattr(settings, "fast_mode", False):
         return PromptVariant(
             image_prompt=f"{user_prompt}. {BRAND_GUIDE}",
             negative_prompt=DEFAULT_NEGATIVE + esc["extra_negative"],

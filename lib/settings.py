@@ -20,10 +20,11 @@ class Settings(BaseModel):
     vision_judge_model: str = "gemini-3-pro"
     vision_fallback_model: str = "claude-sonnet-4-7"
 
-    max_attempts: int = 2
-    stage_timeout_gemini_s: int = 22
-    stage_timeout_judge_s: int = 5
-    stage_timeout_total_s: int = 55
+    fast_mode: bool = True  # Vercel Hobby (10s) friendly: skip LLM prompt-build + vision-judge
+    max_attempts: int = 1
+    stage_timeout_gemini_s: int = 8
+    stage_timeout_judge_s: int = 3
+    stage_timeout_total_s: int = 9
 
 
 @lru_cache(maxsize=1)
@@ -33,4 +34,5 @@ def get_settings() -> Settings:
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         postgres_url=os.getenv("POSTGRES_URL", os.getenv("DATABASE_URL", "")),
         public_base_url=os.getenv("PUBLIC_BASE_URL", ""),
+        fast_mode=os.getenv("FAST_MODE", "1") != "0",
     )

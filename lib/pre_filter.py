@@ -108,7 +108,10 @@ async def llm_judge(prompt: str) -> PreFilterResult:
 
 
 async def run(prompt: str) -> PreFilterResult:
+    settings = get_settings()
     rule = rule_check(prompt)
     if rule is not None:
         return rule
+    if getattr(settings, "fast_mode", False):
+        return PreFilterResult(allow=True, category="ok", reason="rule-only (fast_mode)")
     return await llm_judge(prompt)

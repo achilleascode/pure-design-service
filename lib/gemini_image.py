@@ -47,7 +47,7 @@ async def generate(variant: PromptVariant) -> bytes:
         "https://generativelanguage.googleapis.com/v1beta/models/"
         f"{variant.model}:generateContent"
     )
-    async with httpx.AsyncClient(timeout=22.0) as client:
+    async with httpx.AsyncClient(timeout=8.5) as client:
         r = await client.post(
             url,
             headers={"x-goog-api-key": settings.gemini_api_key,
