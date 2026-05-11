@@ -6,7 +6,7 @@ import sys
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, SLOT_X, SLOT_Y, SLOT_W, SLOT_H
+from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, SLOT_X, SLOT_Y, SLOT_W, SLOT_H, LOGO_Y, WARNING_Y, WARNING_H
 
 
 def _synthetic_ki(color=(50, 130, 200, 255)) -> bytes:
@@ -34,8 +34,22 @@ def test_composite_slot_filled_with_ki_color():
 def test_composite_logo_preserved():
     out = composite(_synthetic_ki(color=(0, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
+    # Studio backdrop logo
     px = img.getpixel((TEMPLATE_W // 2, 50))
-    assert max(px) > 100, f"Top logo area looks blacked out: {px}"
+    assert max(px) > 100, f"Studio logo blacked out: {px}"
+    # Hardcoded //pure wordmark on paper
+    px2 = img.getpixel((TEMPLATE_W // 2, LOGO_Y + 40))
+    # logo is dark brown on white → at least one channel should be much darker than pure white
+    assert min(px2) < 200, f"Hardcoded pure logo not visible: {px2}"
+
+
+def test_composite_warning_visible():
+    out = composite(_synthetic_ki(color=(0, 100, 200, 255)))  # blue KI
+    img = Image.open(BytesIO(out)).convert("RGB")
+    # Warning is yellow (R>200, G>200, B<100) — sample inside warning rectangle
+    px = img.getpixel((TEMPLATE_W // 2, WARNING_Y + WARNING_H // 2))
+    is_yellow = px[0] > 180 and px[1] > 180 and px[2] < 150
+    assert is_yellow, f"Warning yellow not visible at warning centre: {px}"
 
 
 def test_composite_domain_preserved():
