@@ -6,7 +6,7 @@ import sys
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, LOGO_Y, LOGO_H, WARNING_Y, WARNING_STRIP_H
+from lib.composite import composite, TEMPLATE_W, TEMPLATE_H, KI_H, LOGO_Y, LOGO_H, WARNING_STRIP_Y, WARNING_STRIP_H
 
 
 def _synthetic_ki(color=(50, 130, 200, 255)) -> bytes:
@@ -22,12 +22,19 @@ def test_composite_dimensions():
     assert img.size == (TEMPLATE_W, TEMPLATE_H), f"Expected {TEMPLATE_W}x{TEMPLATE_H}, got {img.size}"
 
 
-def test_composite_ki_fills_canvas():
+def test_composite_ki_fills_top_two_thirds():
     out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    # KI is full-bleed: top half of image should be saturated red
-    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H // 4))
-    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"KI not full-bleed, got {px}"
+    px = img.getpixel((TEMPLATE_W // 2, KI_H // 2))
+    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"KI top 2/3 not filled, got {px}"
+
+
+def test_composite_warning_strip_is_third():
+    out = composite(_synthetic_ki(color=(0, 0, 255, 255)))
+    img = Image.open(BytesIO(out)).convert("RGB")
+    # sample inside the yellow BG band, above where warning.png sits (top padding region)
+    px = img.getpixel((10, WARNING_STRIP_Y + 5))
+    assert px[0] > 200 and px[1] > 180 and px[2] < 100, f"Warning strip not yellow: {px}"
 
 
 def test_composite_logo_watermark_visible():
@@ -44,30 +51,11 @@ def test_composite_logo_watermark_visible():
     assert False, f"Watermark logo not bright enough; bright={bright}"
 
 
-def test_composite_warning_strip_yellow():
-    out = composite(_synthetic_ki(color=(0, 100, 200, 255)))
-    img = Image.open(BytesIO(out)).convert("RGB")
-    px = img.getpixel((TEMPLATE_W // 2, TEMPLATE_H - WARNING_STRIP_H // 2))
-    assert px[0] > 200 and px[1] > 180 and px[2] < 100, f"Warning strip not yellow: {px}"
-
-
-def test_composite_domain_under_warning():
-    out = composite(_synthetic_ki(color=(255, 255, 255, 255)))
-    img = Image.open(BytesIO(out)).convert("RGB")
-    # Domain row should still show yellow strip BG with some dark pixels (text)
-    found_dark = False
-    for x in range(TEMPLATE_W // 4, 3 * TEMPLATE_W // 4):
-        px = img.getpixel((x, TEMPLATE_H - 20))
-        if max(px) < 120:
-            found_dark = True
-            break
-    assert found_dark, "Domain text not visible in lower strip"
 
 
 if __name__ == "__main__":
     test_composite_dimensions()
-    test_composite_ki_fills_canvas()
+    test_composite_ki_fills_top_two_thirds()
+    test_composite_warning_strip_is_third()
     test_composite_logo_watermark_visible()
-    test_composite_warning_strip_yellow()
-    test_composite_domain_under_warning()
     print("All composite tests passed.")
