@@ -13,7 +13,7 @@ async def run(job_id: str, user_prompt: str, t_start: float) -> dict[str, Any]:
     last_hint = ""
 
     for attempt in range(s.max_attempts):
-        if time.time() - t_start > s.stage_timeout_total_s - 10:
+        if attempt > 0 and time.time() - t_start > max(0, s.stage_timeout_total_s - 10):
             break
 
         variant = await prompt_builder.build(user_prompt, attempt, last_hint)
