@@ -53,24 +53,32 @@ def test_composite_warning_yellow():
     assert yellow_hits >= 2, f"Warning band not yellow: {samples}"
 
 
-def test_dynamic_frame_color():
-    # red KI → scanning a row across the frame zone should hit reddish pixels somewhere
-    out = composite(_synthetic_ki(color=(220, 30, 30, 255)))
+def test_three_badges_top_row():
+    # all three badges should leave dark-ink pixels at roughly the same Y in the upper pouch area
+    from lib.composite import POUCH_X, POUCH_W, BADGE_SIZE, BADGE_Y
+    out = composite(_synthetic_ki(color=(255, 220, 0, 255)))  # bright yellow KI
     img = Image.open(BytesIO(out)).convert("RGB")
-    wx1, wy1, wx2, wy2 = WARN_BBOX
-    # the rectangle outline is 6px wide just outside the warning bbox; scan ±10px around it
-    cy = POUCH_Y + wy1 - 2  # inside the 6px frame outline (drawn at wy1-3..wy1+3)
-    reddish = 0
-    for x in range(POUCH_X + wx1, POUCH_X + wx2 + 1, 4):
-        px = img.getpixel((x, cy))
-        if px[0] > 150 and px[0] > px[1] + 40 and px[0] > px[2] + 40:
-            reddish += 1
-    assert reddish > 10, f"frame not reddish enough, hits={reddish}"
+    # Sample the badge ring at y = BADGE_Y + 6 (top edge inside the ring) across the pouch width
+    by = POUCH_Y + BADGE_Y + 6
+    dark_runs = []
+    in_dark = False
+    start = 0
+    for x in range(POUCH_X, POUCH_X + POUCH_W):
+        px = img.getpixel((x, by))
+        is_dark = px[0] < 80 and px[1] < 80 and px[2] < 80
+        if is_dark and not in_dark:
+            start = x; in_dark = True
+        elif not is_dark and in_dark:
+            dark_runs.append((start, x)); in_dark = False
+    if in_dark:
+        dark_runs.append((start, POUCH_X + POUCH_W))
+    # Three separate badge ring intersections expected
+    assert len(dark_runs) >= 3, f"expected 3+ badge rings at y={by}, found {dark_runs}"
 
 
 if __name__ == "__main__":
     test_composite_dimensions()
     test_composite_design_area_shows_ki()
     test_composite_warning_yellow()
-    test_dynamic_frame_color()
+    test_three_badges_top_row()
     print("All composite tests passed.")
