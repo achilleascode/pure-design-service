@@ -2,196 +2,61 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
-import numpy as np
+from PIL import Image, ImageOps
 
 
 TEMPLATE_W, TEMPLATE_H = 1080, 1350
 
-# Slightly oversize the red-fill so it covers the real studio paper area
-# (which extends from y=133..1164, x=235..844) without leaving a white edge.
-PAPER_X, PAPER_Y = 226, 122
-PAPER_W, PAPER_H = 628, 1052
+# Studio paper slot — the bright rectangle in the backdrop, runs y=132..1164
+# at x=234..846 (612×1032). The warning band has been baked into the lower
+# third of this slot inside assets/backdrop_base.png.
+PAPER_X, PAPER_Y = 234, 132
+PAPER_W, PAPER_H = 612, 1032
 
-# Pouch occupies the paper slot exactly (width matches paper interior 612).
-POUCH_W = 612
-_RAW_POUCH = (798, 1338)
-POUCH_H = round(_RAW_POUCH[1] * POUCH_W / _RAW_POUCH[0])  # ~1026
-POUCH_X = 234
-POUCH_Y = 135 + (1035 - POUCH_H) // 2  # ~139
-_SCALE = POUCH_W / _RAW_POUCH[0]
-
-# Source-coord regions inside the 798x1338 pouch template.
-# Warning band starts at y=855 (top of the dark frame) and ends at y=1305
-# (bottom of the dark frame). Everything between is the warning rectangle
-# from the pouch render and must stay structural — KI is not allowed in here.
-_SRC_WARN_BBOX = (35, 855, 760, 1305)
-# Cyan design area to wipe (above warning, below heat-seal) so the KI shows
-# through cleanly without the baked TRUE/BUD typography.
-_SRC_KI_BBOX = (8, 8, 790, 855)
-
-# Sampling points used to derive the gradient that re-paints the paper area
-# so it blends seamlessly into the surrounding studio red — no visible seam at
-# the top of the paint where it meets the curtain.
-_PAPER_TOP_PROBE_Y = 70    # well inside the curtain, above the paper
-_PAPER_BOT_PROBE_Y = 1240  # well inside the floor, below the paper
-
-# Chroma-key threshold around the pouch cyan (RGB ~49, 184, 222) — wide enough
-# to also strip the slightly lighter heat-seal band at the very top.
-_POUCH_CYAN = np.array([49, 184, 222], dtype=np.int32)
-_CYAN_TOLERANCE = 90
+# KI fills only the upper two-thirds; warning lives below.
+SLOT_X, SLOT_Y = PAPER_X, PAPER_Y + 3   # 3px nudge keeps the natural fold detail
+SLOT_W, SLOT_H = PAPER_W, 685
+WARN_X, WARN_Y = 234, 820
+WARN_W, WARN_H = 612, 344
+DESIGN_BBOX = (SLOT_X, SLOT_Y, SLOT_X + SLOT_W, SLOT_Y + SLOT_H)
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 BACKDROP_PATH = ASSETS_DIR / "backdrop_base.png"
-POUCHE_PATH = ASSETS_DIR / "pouche_3d.png"
+WARNING_PATH = ASSETS_DIR / "warning.png"
 BUD_PATH = ASSETS_DIR / "bud_overlay.png"
 LABELS_DIR = ASSETS_DIR / "labels"
 
-
-def _scale_bbox(bbox: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
-    return tuple(round(v * _SCALE) for v in bbox)  # type: ignore
-
-
-WARN_BBOX = _scale_bbox(_SRC_WARN_BBOX)
-DESIGN_BBOX = _scale_bbox(_SRC_KI_BBOX)
-SLOT_X, SLOT_Y = POUCH_X, POUCH_Y
-SLOT_W, SLOT_H = POUCH_W, POUCH_H
-
 BADGE_SIZE = 72
-BADGE_Y = 55  # clear of the pouch's rounded-corner arc
-
-
-def _load_pouche_scaled() -> tuple[Image.Image, np.ndarray]:
-    pouche = Image.open(POUCHE_PATH).convert("RGBA").resize((POUCH_W, POUCH_H), Image.LANCZOS)
-    return pouche, np.array(pouche)
-
-
-def _strip_pouche_to_structure(arr: np.ndarray) -> Image.Image:
-    """Return the pouch render with everything OUTSIDE the warning band stripped.
-
-    Keeps: drop shadow at the very bottom, the warning yellow + black text + dark
-    border. Drops: heat-seal cyan band, baked badges, cyan design surface and
-    the TRUE/BUD/PREMIUM CBD typography.
-    """
-    out = arr.copy()
-    # Wipe the whole upper face so the KI underneath shows through cleanly.
-    kx1, ky1, kx2, ky2 = DESIGN_BBOX
-    out[ky1:ky2, kx1:kx2, 3] = 0
-    # Then chroma-key everything still cyan (rounded corners, heat-seal band).
-    rgb = out[:, :, :3].astype(np.int32)
-    diff = rgb - _POUCH_CYAN
-    dist = np.sqrt(np.sum(diff * diff, axis=2))
-    out[dist < _CYAN_TOLERANCE, 3] = 0
-    return Image.fromarray(out, "RGBA")
-
-
-def _ki_alpha_mask(silhouette: Image.Image) -> Image.Image:
-    """Pouch silhouette capped at the top edge of the warning's dark frame so
-    the KI never bleeds into the warning rectangle."""
-    arr = np.array(silhouette)
-    arr[WARN_BBOX[1]:, :] = 0
-    return Image.fromarray(arr, "L")
-
-
-def _shading_layer(pouche: Image.Image) -> Image.Image:
-    """Extract the slow lighting variations from the 3D pouch render and convert
-    them into a soft-light overlay. Heavy blur first removes the BUD typography
-    so only the body shading + drop-shadow remains.
-    """
-    blurred = pouche.convert("L").filter(ImageFilter.GaussianBlur(radius=18))
-    arr = np.array(blurred).astype(np.float32)
-    mean = arr.mean()
-    # delta around mean → [-1, 1] scaled gain
-    delta = (arr - mean) / max(1.0, mean)
-    delta = np.clip(delta, -0.55, 0.55)
-    # Convert into an RGBA layer of mid-grey with variable alpha so it lightens
-    # bright spots and darkens shadowed spots when blended in soft-light style.
-    h, w = arr.shape
-    layer = np.zeros((h, w, 4), dtype=np.uint8)
-    layer[..., 0] = 128
-    layer[..., 1] = 128
-    layer[..., 2] = 128
-    # encode brightness/darkness as one rgb channel: bright→white, dark→black
-    bright = (delta > 0)
-    dark = (delta < 0)
-    layer[bright, 0] = 255
-    layer[bright, 1] = 255
-    layer[bright, 2] = 255
-    layer[dark, 0] = 0
-    layer[dark, 1] = 0
-    layer[dark, 2] = 0
-    alpha = np.clip(np.abs(delta) * 255 * 1.4, 0, 255).astype(np.uint8)
-    layer[..., 3] = alpha
-    return Image.fromarray(layer, "RGBA")
-
-
-def _seamless_paper_fill(backdrop: Image.Image) -> None:
-    """Repaint the paper area with a vertical gradient sampled from the curtain
-    above and the floor below the paper, so the painted strip merges into the
-    existing studio red without a visible colour seam."""
-    arr = np.array(backdrop)
-    sample_xs = (
-        PAPER_X + 5,
-        PAPER_X + PAPER_W // 4,
-        PAPER_X + 3 * PAPER_W // 4,
-        PAPER_X + PAPER_W - 5,
-    )
-    top_colors = [arr[_PAPER_TOP_PROBE_Y, x, :3] for x in sample_xs]
-    bot_colors = [arr[_PAPER_BOT_PROBE_Y, x, :3] for x in sample_xs]
-    top = np.median(top_colors, axis=0).astype(int)
-    bot = np.median(bot_colors, axis=0).astype(int)
-    draw = ImageDraw.Draw(backdrop)
-    h = max(1, PAPER_H - 1)
-    for y in range(PAPER_Y, PAPER_Y + PAPER_H):
-        t = (y - PAPER_Y) / h
-        color = tuple(int(round(top[c] * (1 - t) + bot[c] * t)) for c in range(3))
-        draw.line([(PAPER_X, y), (PAPER_X + PAPER_W - 1, y)], fill=color)
+BADGE_Y = 28
+BADGE_INNER_MARGIN = 36
 
 
 def composite(ki_bytes: bytes) -> bytes:
     backdrop = Image.open(BACKDROP_PATH).convert("RGBA")
     ki = Image.open(BytesIO(ki_bytes)).convert("RGBA")
 
-    # 0. Seamless re-paint of the paper area — no visible colour seam at the
-    # top where the paint used to meet the lighter curtain.
-    _seamless_paper_fill(backdrop)
+    # 1. KI fits cleanly into the upper paper slot (above the baked warning).
+    ai_fitted = ImageOps.fit(ki, (SLOT_W, SLOT_H), Image.LANCZOS, centering=(0.5, 0.5))
+    backdrop.paste(ai_fitted, (SLOT_X, SLOT_Y), ai_fitted)
 
-    pouche, arr = _load_pouche_scaled()
-    silhouette = pouche.split()[3]
-    ki_mask = _ki_alpha_mask(silhouette)
+    # 2. Re-paste the warning as a top safety layer so the KI can never end up
+    # painting over it — even if the slot constants drift in a future change.
+    warning = Image.open(WARNING_PATH).convert("RGBA")
+    backdrop.paste(warning, (WARN_X, WARN_Y), warning)
 
-    # 1. KI fitted into the pouch silhouette, capped above the warning band.
-    ai_fitted = ImageOps.fit(ki, (POUCH_W, POUCH_H), Image.LANCZOS, centering=(0.5, 0.52))
-    ai_in_pouch = ai_fitted.convert("RGBA")
-    ai_in_pouch.putalpha(ki_mask)
-    backdrop.paste(ai_in_pouch, (POUCH_X, POUCH_Y), ai_in_pouch)
-
-    # 2. 3D shading overlay derived from the pouche render's blurred luminance,
-    # masked to the KI region only so it does not darken the warning.
-    shading = _shading_layer(pouche)
-    shading.putalpha(ImageChops.multiply(shading.split()[3], ki_mask))
-    backdrop.paste(shading, (POUCH_X, POUCH_Y), shading)
-
-    # 3. Structural pouch overlay (warning band + drop shadow) — no violet
-    # frame any more, the pouch render's own dark border around the warning
-    # stays.
-    pouche_struct = _strip_pouche_to_structure(arr)
-    backdrop.paste(pouche_struct, (POUCH_X, POUCH_Y), pouche_struct)
-
-    # 4. Three badges in a single top row, positioned inside the pouch.
+    # 3. Three brand badges across the top of the KI area.
     badge_files = ("Label_Grammage.png", "Label_CoA.png", "Label_Food_Grade.png")
     n = len(badge_files)
-    inner_margin = 60  # stays inside the pouch's rounded top corners
-    span = POUCH_W - 2 * inner_margin
+    span = SLOT_W - 2 * BADGE_INNER_MARGIN
     gap = (span - n * BADGE_SIZE) // (n - 1)
     for i, fname in enumerate(badge_files):
-        bx = POUCH_X + inner_margin + i * (BADGE_SIZE + gap)
-        by = POUCH_Y + BADGE_Y
         badge = Image.open(LABELS_DIR / fname).convert("RGBA")
         badge = badge.resize((BADGE_SIZE, BADGE_SIZE), Image.LANCZOS)
+        bx = SLOT_X + BADGE_INNER_MARGIN + i * (BADGE_SIZE + gap)
+        by = SLOT_Y + BADGE_Y
         backdrop.paste(badge, (bx, by), badge)
 
-    # 5. Real bud + leaves on top (Flower PSD layer).
+    # 4. Real bud + leaves on top (Flower PSD layer).
     bud = Image.open(BUD_PATH).convert("RGBA")
     backdrop.paste(bud, (0, 0), bud)
 

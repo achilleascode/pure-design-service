@@ -1,13 +1,15 @@
 """Regenerate derived assets in assets/ from raw sources.
 
 Outputs:
-  assets/backdrop_base.png     — original studio backdrop, no warning baked in
-  assets/bud_overlay.png       — Flower layer extracted directly from the PSD
-                                 (clean alpha, no manual chroma-keying)
-  assets/pouche_3d.png         — pre-rendered 3D pouch with shading, fold,
-                                 built-in Grammage + Food-Grade badges,
-                                 and the warning baked in
-  assets/labels/Label_*.png    — labels with true-black ink, full alpha
+  assets/backdrop_base.png     — original studio backdrop with the yellow
+                                 warning notice BAKED INTO the lower 1/3 of
+                                 the white paper slot (hardcoded background).
+  assets/warning.png           — the same warning at its final 612×344 size,
+                                 kept as a separate asset so it can be
+                                 re-pasted as a top safety layer.
+  assets/bud_overlay.png       — `Flower` pixel layer extracted from the
+                                 backdrop PSD; clean designer alpha.
+  assets/labels/Label_*.png    — labels with true-black ink, full alpha.
 """
 from __future__ import annotations
 
@@ -19,21 +21,41 @@ from psd_tools import PSDImage
 ROOT = Path(__file__).parent.parent
 SRC_DIR = Path("/Users/achisumma/Downloads/KI_Packaging_Design_Sources")
 SRC_BACKDROP_PSD = SRC_DIR / "Backdrop" / "KI_Packaging_Design_Backdrop.psd"
-SRC_POUCHE_PSD = SRC_DIR / "Pouche" / "PSD" / "doypack_true_bud_85x140.psd"
 SRC_BACKDROP_PNG = SRC_DIR / "Backdrop" / "KI_Packaging_Design_Backdrop.png"
+SRC_WARNING_PNG = SRC_DIR / "Warning" / "PNG" / "Warning.png"
 SRC_LABELS = SRC_DIR / "Labels" / "PNG"
 
 ASSETS = ROOT / "assets"
 LABELS_OUT = ASSETS / "labels"
 
+# Position inside the studio paper (paper = x=234..846, y=132..1164, 612×1032).
+# The warning occupies the lower third; KI fills the upper two thirds.
+WARN_X, WARN_Y = 234, 820
+WARN_W, WARN_H = 612, 344
 
-def build_backdrop():
+# Yellow content bbox inside the source Warning.png (10769x6208, dark frame ~506px)
+_WARN_CONTENT_BBOX = (506, 506, 10262, 5701)
+
+
+def build_warning() -> Image.Image:
+    """Crop the source warning to its yellow content area and resize to the
+    final 612×344 slot. Returned as RGBA Image; also saved to assets/warning.png."""
+    src = Image.open(SRC_WARNING_PNG).convert("RGBA")
+    cropped = src.crop(_WARN_CONTENT_BBOX)
+    warn = cropped.resize((WARN_W, WARN_H), Image.LANCZOS)
+    warn.save(ASSETS / "warning.png", format="PNG", optimize=True)
+    return warn
+
+
+def build_backdrop_with_warning(warning: Image.Image) -> None:
+    """Bake the warning into the lower 1/3 of the studio backdrop's white paper."""
     bd = Image.open(SRC_BACKDROP_PNG).convert("RGBA")
     assert bd.size == (1080, 1350)
+    bd.paste(warning, (WARN_X, WARN_Y), warning)
     bd.save(ASSETS / "backdrop_base.png", format="PNG", optimize=True)
 
 
-def build_bud_overlay():
+def build_bud_overlay() -> None:
     """Extract the Flower pixel layer directly from the PSD — already alpha-cut by the designer."""
     psd = PSDImage.open(SRC_BACKDROP_PSD)
     for layer in psd:
@@ -45,18 +67,7 @@ def build_bud_overlay():
     raise RuntimeError("Flower layer not found in backdrop PSD")
 
 
-def build_pouche_3d():
-    """Extract the noise-reduced 3D rendered pouch from the Pouche PSD."""
-    psd = PSDImage.open(SRC_POUCHE_PSD)
-    for layer in psd:
-        if layer.name.startswith("Gerendertes Bild (mit"):
-            img = layer.topil()
-            img.save(ASSETS / "pouche_3d.png", format="PNG", optimize=True)
-            return
-    raise RuntimeError("Pouche render layer not found")
-
-
-def build_labels():
+def build_labels() -> None:
     LABELS_OUT.mkdir(exist_ok=True)
     for fname in ("Label_CoA.png", "Label_Food_Grade.png", "Label_Grammage.png"):
         src = SRC_LABELS / fname
@@ -70,18 +81,17 @@ def build_labels():
         arr[mask, 1] = 0
         arr[mask, 2] = 0
         arr[mask, 3] = np.maximum(arr[mask, 3], 240)
-        out = Image.fromarray(arr, "RGBA")
-        out.save(LABELS_OUT / fname, format="PNG", optimize=True)
+        Image.fromarray(arr, "RGBA").save(LABELS_OUT / fname, format="PNG", optimize=True)
 
 
-def main():
+def main() -> None:
     ASSETS.mkdir(exist_ok=True)
-    build_backdrop()
+    warning = build_warning()
+    build_backdrop_with_warning(warning)
     build_bud_overlay()
-    build_pouche_3d()
     build_labels()
     # remove obsolete assets from previous iterations
-    for stale in ("top_fold.png", "warning_clean.png"):
+    for stale in ("top_fold.png", "warning_clean.png", "pouche_3d.png"):
         p = ASSETS / stale
         if p.exists():
             p.unlink()

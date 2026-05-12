@@ -10,10 +10,14 @@ from lib.composite import (
     composite,
     TEMPLATE_W,
     TEMPLATE_H,
-    POUCH_X,
-    POUCH_Y,
-    DESIGN_BBOX,
-    WARN_BBOX,
+    SLOT_X,
+    SLOT_Y,
+    SLOT_W,
+    SLOT_H,
+    WARN_X,
+    WARN_Y,
+    WARN_W,
+    WARN_H,
 )
 
 
@@ -26,59 +30,44 @@ def _synthetic_ki(color=(50, 130, 200, 255)) -> bytes:
 
 def test_composite_dimensions():
     out = composite(_synthetic_ki())
-    img = Image.open(BytesIO(out))
-    assert img.size == (TEMPLATE_W, TEMPLATE_H)
+    assert Image.open(BytesIO(out)).size == (TEMPLATE_W, TEMPLATE_H)
 
 
-def test_composite_design_area_shows_ki():
-    """Anywhere the pouch was originally pure cyan, the KI should now show through."""
+def test_ki_in_upper_slot():
     out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    # Scan a vertical strip on the left side of the pouch — plenty of original cyan there.
-    red_hits = 0
-    for y in range(POUCH_Y + 200, POUCH_Y + 700, 30):
-        for x in range(POUCH_X + 20, POUCH_X + 120, 30):
-            px = img.getpixel((x, y))
-            if px[0] > 200 and px[1] < 80 and px[2] < 80:
-                red_hits += 1
-    assert red_hits >= 10, f"KI red did not show through cyan replacement, hits={red_hits}"
+    cx = SLOT_X + SLOT_W // 2
+    cy = SLOT_Y + SLOT_H // 2
+    px = img.getpixel((cx, cy))
+    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"KI centre not red, got {px}"
 
 
-def test_composite_warning_yellow():
-    out = composite(_synthetic_ki(color=(0, 0, 255, 255)))
+def test_warning_overrides_ki():
+    """If the KI is red but the warning is baked + re-pasted, the warning area
+    must read yellow on top — the KI must not overwrite the warning."""
+    out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    cx = POUCH_X + (WARN_BBOX[0] + WARN_BBOX[2]) // 2
-    samples = [img.getpixel((cx, POUCH_Y + y)) for y in range(WARN_BBOX[1] + 10, WARN_BBOX[3] - 10, 20)]
+    cx = WARN_X + WARN_W // 2
+    samples = [img.getpixel((cx, y)) for y in range(WARN_Y + 20, WARN_Y + WARN_H - 20, 30)]
     yellow_hits = sum(1 for px in samples if px[0] > 200 and px[1] > 180 and px[2] < 100)
-    assert yellow_hits >= 2, f"Warning band not yellow: {samples}"
+    assert yellow_hits >= 4, f"Warning not yellow in band: {samples}"
 
 
-def test_three_badges_top_row():
-    # all three badges should leave dark-ink pixels at roughly the same Y in the upper pouch area
-    from lib.composite import POUCH_X, POUCH_W, BADGE_SIZE, BADGE_Y
-    out = composite(_synthetic_ki(color=(255, 220, 0, 255)))  # bright yellow KI
+def test_no_red_paint_outside_paper():
+    """Outside the paper slot the natural backdrop must show — no flat painted red."""
+    out = composite(_synthetic_ki())
     img = Image.open(BytesIO(out)).convert("RGB")
-    # Sample the badge ring at y = BADGE_Y + 6 (top edge inside the ring) across the pouch width
-    by = POUCH_Y + BADGE_Y + 6
-    dark_runs = []
-    in_dark = False
-    start = 0
-    for x in range(POUCH_X, POUCH_X + POUCH_W):
-        px = img.getpixel((x, by))
-        is_dark = px[0] < 80 and px[1] < 80 and px[2] < 80
-        if is_dark and not in_dark:
-            start = x; in_dark = True
-        elif not is_dark and in_dark:
-            dark_runs.append((start, x)); in_dark = False
-    if in_dark:
-        dark_runs.append((start, POUCH_X + POUCH_W))
-    # Three separate badge ring intersections expected
-    assert len(dark_runs) >= 3, f"expected 3+ badge rings at y={by}, found {dark_runs}"
+    # Sample just left of the paper at mid-height — should look like the studio red,
+    # not a flat solid square. We assert the natural curtain colour is roughly preserved.
+    px = img.getpixel((50, 500))
+    # studio red curtain at this spot is around (10-20, 10-20, 10-20) black wall — anything
+    # is acceptable except the previous flat (157, 57, 58) paint colour.
+    assert not (px == (157, 57, 58)), f"flat solid red paint still present: {px}"
 
 
 if __name__ == "__main__":
     test_composite_dimensions()
-    test_composite_design_area_shows_ki()
-    test_composite_warning_yellow()
-    test_three_badges_top_row()
+    test_ki_in_upper_slot()
+    test_warning_overrides_ki()
+    test_no_red_paint_outside_paper()
     print("All composite tests passed.")
