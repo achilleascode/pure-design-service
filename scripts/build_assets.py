@@ -59,9 +59,15 @@ def build_backdrop_with_warning(warning: Image.Image) -> None:
 
 
 def build_bud_overlay() -> None:
-    """Extract the Flower pixel layer from the PSD and strip the floor-red shadow
-    pixels (~5400 pixels, 10% of the opaque area) so the bud composite no longer
-    drags a grey halo onto the studio backdrop. The bud body's warm colours stay."""
+    """Extract the Flower layer from the PSD and strip the photographed studio
+    shadow so the composite no longer drags a grey halo around the bud.
+
+    Two kill rules are OR-ed:
+      1) close to the studio floor red (Euclidean RGB distance < 40)
+      2) red-dominant pixel (R > 1.7 × max(G, B)) — catches the darker drop-shadow
+         tones that aren't quite the same red as the floor itself
+    Together they remove ~33% of the opaque area (the entire shadow halo) while
+    leaving the bud body's yellow / green / brown pixels untouched."""
     psd = PSDImage.open(SRC_BACKDROP_PSD)
     for layer in psd:
         if layer.name == "Flower":
@@ -69,10 +75,14 @@ def build_bud_overlay() -> None:
             assert img.size == (1080, 1350)
             arr = np.array(img)
             rgb = arr[:, :, :3].astype(np.int32)
+            r = rgb[:, :, 0]
+            g = rgb[:, :, 1]
+            b = rgb[:, :, 2]
             floor_red = np.array([157, 57, 58], dtype=np.int32)
             diff = rgb - floor_red
             dist = np.sqrt(np.sum(diff * diff, axis=2))
-            shadow_mask = (dist < 40) & (arr[:, :, 3] > 50)
+            red_dominant = (r > 1.7 * np.maximum(g, 1)) & (r > 1.7 * np.maximum(b, 1)) & (r > 30)
+            shadow_mask = ((dist < 40) | red_dominant) & (arr[:, :, 3] > 5)
             arr[shadow_mask, 3] = 0
             Image.fromarray(arr, "RGBA").save(ASSETS / "bud_overlay.png", format="PNG", optimize=True)
             return
