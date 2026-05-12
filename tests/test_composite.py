@@ -10,11 +10,10 @@ from lib.composite import (
     composite,
     TEMPLATE_W,
     TEMPLATE_H,
-    SLOT_X,
-    SLOT_Y,
-    SLOT_W,
-    SLOT_H,
-    BADGE_SIZE,
+    POUCH_X,
+    POUCH_Y,
+    DESIGN_BBOX,
+    WARN_BBOX,
 )
 
 
@@ -31,50 +30,42 @@ def test_composite_dimensions():
     assert img.size == (TEMPLATE_W, TEMPLATE_H)
 
 
-def test_composite_ki_slot_filled():
+def test_composite_design_area_shows_ki():
     out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    cx = SLOT_X + SLOT_W // 2
-    cy = SLOT_Y + SLOT_H // 2
+    cx = POUCH_X + (DESIGN_BBOX[0] + DESIGN_BBOX[2]) // 2
+    cy = POUCH_Y + (DESIGN_BBOX[1] + DESIGN_BBOX[3]) // 2
     px = img.getpixel((cx, cy))
-    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"KI centre not red, got {px}"
+    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"Design centre not red, got {px}"
 
 
-def test_composite_warning_baked_in():
+def test_composite_warning_yellow():
     out = composite(_synthetic_ki(color=(0, 0, 255, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    # warning has dark borders + black text — sample multiple points and require >=1 yellow
-    samples = [
-        img.getpixel((SLOT_X + SLOT_W // 2, y))
-        for y in (855, 870, 940, 980, 1040, 1080, 1140)
-    ]
+    cx = POUCH_X + (WARN_BBOX[0] + WARN_BBOX[2]) // 2
+    samples = [img.getpixel((cx, POUCH_Y + y)) for y in range(WARN_BBOX[1] + 10, WARN_BBOX[3] - 10, 20)]
     yellow_hits = sum(1 for px in samples if px[0] > 200 and px[1] > 180 and px[2] < 100)
-    assert yellow_hits >= 1, f"No yellow pixels found in warning band: {samples}"
+    assert yellow_hits >= 2, f"Warning band not yellow: {samples}"
 
 
-def test_composite_badges_present():
-    # badges have transparent backgrounds with black ink only — check the outer ring
-    # of each badge contains dark pixels (not raw KI red).
-    out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
+def test_dynamic_frame_color():
+    # red KI → scanning a row across the frame zone should hit reddish pixels somewhere
+    out = composite(_synthetic_ki(color=(220, 30, 30, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    badge_origins = [
-        (SLOT_X + 15, SLOT_Y + 15),                              # Grammage top-left
-        (SLOT_X + SLOT_W - 15 - BADGE_SIZE, SLOT_Y + 15),        # Food-Grade top-right
-        (SLOT_X + 15, SLOT_Y + SLOT_H - 15 - BADGE_SIZE),        # CoA bottom-left
-    ]
-    for bx, by in badge_origins:
-        # scan the top edge of the badge — outer black ring lives here
-        dark = 0
-        for x in range(bx + 5, bx + BADGE_SIZE - 5):
-            px = img.getpixel((x, by + 4))
-            if px[0] < 80 and px[1] < 80 and px[2] < 80:
-                dark += 1
-        assert dark > 0, f"No dark ring pixels at badge origin ({bx},{by})"
+    wx1, wy1, wx2, wy2 = WARN_BBOX
+    # the rectangle outline is 6px wide just outside the warning bbox; scan ±10px around it
+    cy = POUCH_Y + wy1 - 2  # inside the 6px frame outline (drawn at wy1-3..wy1+3)
+    reddish = 0
+    for x in range(POUCH_X + wx1, POUCH_X + wx2 + 1, 4):
+        px = img.getpixel((x, cy))
+        if px[0] > 150 and px[0] > px[1] + 40 and px[0] > px[2] + 40:
+            reddish += 1
+    assert reddish > 10, f"frame not reddish enough, hits={reddish}"
 
 
 if __name__ == "__main__":
     test_composite_dimensions()
-    test_composite_ki_slot_filled()
-    test_composite_warning_baked_in()
-    test_composite_badges_present()
+    test_composite_design_area_shows_ki()
+    test_composite_warning_yellow()
+    test_dynamic_frame_color()
     print("All composite tests passed.")
