@@ -80,19 +80,12 @@ def composite(ki_bytes: bytes) -> bytes:
     ai_fitted = ImageOps.fit(ki, (SLOT_W, SLOT_H), Image.LANCZOS, centering=(0.5, 0.5))
     backdrop.paste(ai_fitted, (SLOT_X, SLOT_Y), ai_fitted)
 
-    # 2. Bud + leaves overlay BEFORE the warning, so the warning then covers the
-    # part of the leaf that overlaps the yellow band. The bud body that sits on
-    # the studio floor below the pouch stays visible because the warning ends
-    # at y=1170.
-    bud = Image.open(BUD_PATH).convert("RGBA")
-    backdrop.paste(bud, (0, 0), bud)
-
-    # 3. Re-paste the warning as a top safety layer so the KI never paints
-    # over it and the bud leaf never pokes through the yellow band.
+    # 2. Re-paste the warning as a top safety layer so the KI never paints
+    # over it.
     warning = Image.open(WARNING_PATH).convert("RGBA")
     backdrop.paste(warning, (WARN_X, WARN_Y), warning)
 
-    # 4. Three brand badges across the top of the KI area.
+    # 3. Three brand badges across the top of the KI area.
     badge_files = ("Label_Grammage.png", "Label_CoA.png", "Label_Food_Grade.png")
     n = len(badge_files)
     span = SLOT_W - 2 * BADGE_INNER_MARGIN
@@ -103,6 +96,11 @@ def composite(ki_bytes: bytes) -> bytes:
         bx = SLOT_X + BADGE_INNER_MARGIN + i * (BADGE_SIZE + gap)
         by = SLOT_Y + BADGE_Y
         backdrop.paste(badge, (bx, by), badge)
+
+    # 4. Bud + leaves last so the bud sits in FRONT of the warning — the leaf
+    # tip overlaps the yellow band like the brand reference shows.
+    bud = Image.open(BUD_PATH).convert("RGBA")
+    backdrop.paste(bud, (0, 0), bud)
 
     out = BytesIO()
     backdrop.save(out, format="PNG", optimize=True)
