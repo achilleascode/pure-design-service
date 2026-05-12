@@ -33,34 +33,66 @@ BADGE_Y = 30
 BADGE_INNER_MARGIN = 40
 
 
-def _trim_near_white_border(img: Image.Image, threshold: int = 245) -> Image.Image:
-    """Gemini sometimes leaves a near-white padding on the sides of its output.
-    Crop the image down to its actual content bbox before we fit it into the
-    pouch slot, otherwise the white survives as visible stripes left and right
-    of the motif."""
-    rgb = np.array(img.convert("RGB"))
-    not_white = (rgb[:, :, 0] < threshold) | (rgb[:, :, 1] < threshold) | (rgb[:, :, 2] < threshold)
-    ys, xs = np.where(not_white)
-    if len(xs) == 0 or len(ys) == 0:
+def _trim_uniform_padding(img: Image.Image, std_threshold: float = 15.0) -> Image.Image:
+    """Gemini regularly emits a uniform-colour padding band on the sides of its
+    1024×1536 output — sometimes pure white, sometimes a flat pink-purple etc.
+    A simple white-threshold misses the coloured padding and a stripe survives
+    inside the pouch slot.
+
+    Scan columns/rows from each edge inward; treat any row/column whose pixel
+    stddev is below `std_threshold` as padding and crop past it once real
+    content (higher variance) starts.
+    """
+    rgb = np.array(img.convert("RGB")).astype(np.float32)
+    h, w, _ = rgb.shape
+
+    left = 0
+    for x in range(w // 2):
+        if rgb[:, x, :].std() > std_threshold:
+            left = x
+            break
+    right = w
+    for x in range(w - 1, w // 2, -1):
+        if rgb[:, x, :].std() > std_threshold:
+            right = x + 1
+            break
+    top = 0
+    for y in range(h // 2):
+        if rgb[y, :, :].std() > std_threshold:
+            top = y
+            break
+    bottom = h
+    for y in range(h - 1, h // 2, -1):
+        if rgb[y, :, :].std() > std_threshold:
+            bottom = y + 1
+            break
+    if right <= left or bottom <= top:
         return img
-    return img.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+    return img.crop((left, top, right, bottom))
 
 
 def composite(ki_bytes: bytes) -> bytes:
     backdrop = Image.open(BACKDROP_PATH).convert("RGBA")
     ki = Image.open(BytesIO(ki_bytes)).convert("RGBA")
-    ki = _trim_near_white_border(ki)
+    ki = _trim_uniform_padding(ki)
 
     # 1. KI fits cleanly into the upper paper slot (above the baked warning).
     ai_fitted = ImageOps.fit(ki, (SLOT_W, SLOT_H), Image.LANCZOS, centering=(0.5, 0.5))
     backdrop.paste(ai_fitted, (SLOT_X, SLOT_Y), ai_fitted)
 
-    # 2. Re-paste the warning as a top safety layer so the KI can never end up
-    # painting over it — even if the slot constants drift in a future change.
+    # 2. Bud + leaves overlay BEFORE the warning, so the warning then covers the
+    # part of the leaf that overlaps the yellow band. The bud body that sits on
+    # the studio floor below the pouch stays visible because the warning ends
+    # at y=1170.
+    bud = Image.open(BUD_PATH).convert("RGBA")
+    backdrop.paste(bud, (0, 0), bud)
+
+    # 3. Re-paste the warning as a top safety layer so the KI never paints
+    # over it and the bud leaf never pokes through the yellow band.
     warning = Image.open(WARNING_PATH).convert("RGBA")
     backdrop.paste(warning, (WARN_X, WARN_Y), warning)
 
-    # 3. Three brand badges across the top of the KI area.
+    # 4. Three brand badges across the top of the KI area.
     badge_files = ("Label_Grammage.png", "Label_CoA.png", "Label_Food_Grade.png")
     n = len(badge_files)
     span = SLOT_W - 2 * BADGE_INNER_MARGIN
@@ -71,10 +103,6 @@ def composite(ki_bytes: bytes) -> bytes:
         bx = SLOT_X + BADGE_INNER_MARGIN + i * (BADGE_SIZE + gap)
         by = SLOT_Y + BADGE_Y
         backdrop.paste(badge, (bx, by), badge)
-
-    # 4. Real bud + leaves on top (Flower PSD layer).
-    bud = Image.open(BUD_PATH).convert("RGBA")
-    backdrop.paste(bud, (0, 0), bud)
 
     out = BytesIO()
     backdrop.save(out, format="PNG", optimize=True)
