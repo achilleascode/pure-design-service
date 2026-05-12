@@ -18,7 +18,7 @@ PAPER_W, PAPER_H = 612, 1032
 SLOT_X, SLOT_Y = PAPER_X, PAPER_Y - 2
 SLOT_W, SLOT_H = PAPER_W, 822 - (PAPER_Y - 2)  # ends just before the warning
 WARN_X, WARN_Y = 234, 820
-WARN_W, WARN_H = 612, 344
+WARN_W, WARN_H = 612, 350
 DESIGN_BBOX = (SLOT_X, SLOT_Y, SLOT_X + SLOT_W, SLOT_Y + SLOT_H)
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"

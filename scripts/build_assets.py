@@ -31,7 +31,7 @@ LABELS_OUT = ASSETS / "labels"
 # Position inside the studio paper (paper = x=234..846, y=132..1164, 612×1032).
 # The warning occupies the lower third; KI fills the upper two thirds.
 WARN_X, WARN_Y = 234, 820
-WARN_W, WARN_H = 612, 344
+WARN_W, WARN_H = 612, 350  # extends 6px past the natural paper edge to bury the tiny white seam
 
 # Yellow content bbox inside the source Warning.png (10769x6208, dark frame ~506px)
 _WARN_CONTENT_BBOX = (506, 506, 10262, 5701)
