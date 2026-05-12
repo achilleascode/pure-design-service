@@ -60,17 +60,15 @@ def composite(ki_bytes: bytes) -> bytes:
     warning = Image.open(WARNING_PATH).convert("RGBA")
     backdrop.paste(warning, (WARN_X, WARN_Y), warning)
 
-    # 3. Three brand badges across the top of the KI area.
-    badge_files = ("Label_Grammage.png", "Label_CoA.png", "Label_Food_Grade.png")
-    n = len(badge_files)
-    span = SLOT_W - 2 * BADGE_INNER_MARGIN
-    gap = (span - n * BADGE_SIZE) // (n - 1)
-    for i, fname in enumerate(badge_files):
+    # 3. Two brand badges: Grammage on the left, CoA on the right.
+    badge_positions = (
+        ("Label_Grammage.png", SLOT_X + BADGE_INNER_MARGIN),
+        ("Label_CoA.png",      SLOT_X + SLOT_W - BADGE_INNER_MARGIN - BADGE_SIZE),
+    )
+    for fname, bx in badge_positions:
         badge = Image.open(LABELS_DIR / fname).convert("RGBA")
         badge = badge.resize((BADGE_SIZE, BADGE_SIZE), Image.LANCZOS)
-        bx = SLOT_X + BADGE_INNER_MARGIN + i * (BADGE_SIZE + gap)
-        by = SLOT_Y + BADGE_Y
-        backdrop.paste(badge, (bx, by), badge)
+        backdrop.paste(badge, (bx, SLOT_Y + BADGE_Y), badge)
 
     # 4. Real bud + leaves on top (Flower PSD layer).
     bud = Image.open(BUD_PATH).convert("RGBA")
