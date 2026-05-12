@@ -31,12 +31,17 @@ def test_composite_dimensions():
 
 
 def test_composite_design_area_shows_ki():
+    """Anywhere the pouch was originally pure cyan, the KI should now show through."""
     out = composite(_synthetic_ki(color=(255, 0, 0, 255)))
     img = Image.open(BytesIO(out)).convert("RGB")
-    cx = POUCH_X + (DESIGN_BBOX[0] + DESIGN_BBOX[2]) // 2
-    cy = POUCH_Y + (DESIGN_BBOX[1] + DESIGN_BBOX[3]) // 2
-    px = img.getpixel((cx, cy))
-    assert px[0] > 200 and px[1] < 60 and px[2] < 60, f"Design centre not red, got {px}"
+    # Scan a vertical strip on the left side of the pouch — plenty of original cyan there.
+    red_hits = 0
+    for y in range(POUCH_Y + 200, POUCH_Y + 700, 30):
+        for x in range(POUCH_X + 20, POUCH_X + 120, 30):
+            px = img.getpixel((x, y))
+            if px[0] > 200 and px[1] < 80 and px[2] < 80:
+                red_hits += 1
+    assert red_hits >= 10, f"KI red did not show through cyan replacement, hits={red_hits}"
 
 
 def test_composite_warning_yellow():
