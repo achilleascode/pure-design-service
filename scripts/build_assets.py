@@ -38,11 +38,20 @@ _WARN_CONTENT_BBOX = (506, 506, 10262, 5701)
 
 
 def build_warning() -> Image.Image:
-    """Crop the source warning to its yellow content area and resize to the
-    final 612×344 slot. Returned as RGBA Image; also saved to assets/warning.png."""
+    """Crop the yellow content from the source warning, resize it slightly
+    smaller than the final slot, then wrap it in a dark frame matching the
+    pouche reference design.
+
+    Final asset is 612×344 with a 10px dark border around 592×324 of yellow."""
+    border = 10
+    dark_frame_color = (38, 37, 36, 255)  # sampled from Pouche reference at y=1300
+
     src = Image.open(SRC_WARNING_PNG).convert("RGBA")
     cropped = src.crop(_WARN_CONTENT_BBOX)
-    warn = cropped.resize((WARN_W, WARN_H), Image.LANCZOS)
+    inner = cropped.resize((WARN_W - 2 * border, WARN_H - 2 * border), Image.LANCZOS)
+
+    warn = Image.new("RGBA", (WARN_W, WARN_H), dark_frame_color)
+    warn.paste(inner, (border, border))
     warn.save(ASSETS / "warning.png", format="PNG", optimize=True)
     return warn
 

@@ -13,9 +13,10 @@ TEMPLATE_W, TEMPLATE_H = 1080, 1350
 PAPER_X, PAPER_Y = 234, 132
 PAPER_W, PAPER_H = 612, 1032
 
-# KI fills only the upper two-thirds; warning lives below.
-SLOT_X, SLOT_Y = PAPER_X, PAPER_Y + 3   # 3px nudge keeps the natural fold detail
-SLOT_W, SLOT_H = PAPER_W, 685
+# KI fills only the upper two-thirds; warning lives below. SLOT_Y overshoots
+# the paper top by 2px on purpose so no white strip survives at the seam.
+SLOT_X, SLOT_Y = PAPER_X, PAPER_Y - 2
+SLOT_W, SLOT_H = PAPER_W, 822 - (PAPER_Y - 2)  # ends just before the warning
 WARN_X, WARN_Y = 234, 820
 WARN_W, WARN_H = 612, 344
 DESIGN_BBOX = (SLOT_X, SLOT_Y, SLOT_X + SLOT_W, SLOT_Y + SLOT_H)
