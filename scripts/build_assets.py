@@ -59,13 +59,22 @@ def build_backdrop_with_warning(warning: Image.Image) -> None:
 
 
 def build_bud_overlay() -> None:
-    """Extract the Flower pixel layer directly from the PSD — already alpha-cut by the designer."""
+    """Extract the Flower pixel layer from the PSD and strip the floor-red shadow
+    pixels (~5400 pixels, 10% of the opaque area) so the bud composite no longer
+    drags a grey halo onto the studio backdrop. The bud body's warm colours stay."""
     psd = PSDImage.open(SRC_BACKDROP_PSD)
     for layer in psd:
         if layer.name == "Flower":
             img = layer.composite()
             assert img.size == (1080, 1350)
-            img.save(ASSETS / "bud_overlay.png", format="PNG", optimize=True)
+            arr = np.array(img)
+            rgb = arr[:, :, :3].astype(np.int32)
+            floor_red = np.array([157, 57, 58], dtype=np.int32)
+            diff = rgb - floor_red
+            dist = np.sqrt(np.sum(diff * diff, axis=2))
+            shadow_mask = (dist < 40) & (arr[:, :, 3] > 50)
+            arr[shadow_mask, 3] = 0
+            Image.fromarray(arr, "RGBA").save(ASSETS / "bud_overlay.png", format="PNG", optimize=True)
             return
     raise RuntimeError("Flower layer not found in backdrop PSD")
 
