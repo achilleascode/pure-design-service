@@ -9,13 +9,15 @@ BRAND_GUIDE = (
     "Brand: Pure Cannabis (CH/EU, CBD <1% THC). "
     "Visual style: cinematic, photo-realistic, vivid colour, high detail. "
     "Output must be 2:3 portrait (taller than wide). "
-    "Central composition with ~10% padding from edges. "
-    "Lower-right area should remain visually calm — keep main subject in upper 2/3 and centre. "
+    "Central pouch-front motif, edge bleed safe, ~10% padding from all edges. "
+    "Lower-right area should remain visually calm — keep main subject central. "
     "Vocabulary: replace 'weed/joint/smoke/high' with 'hemp/CBD/botanical/wellness'."
 )
 
 DEFAULT_NEGATIVE = (
     "text, letters, words, numbers, captions, labels, logos, brand marks, watermarks, "
+    "yellow warning label, multilingual warning text, paragraphs, bottom banner, "
+    "smoking warning, health warning text, "
     "frames, borders, packaging mockup, pouch, doypack, studio backdrop, red floor, "
     "studio curtain, cannabis leaves at lower-right corner, hands, fingers, faces, "
     "people, persons, children, low quality, blurry, distorted"
