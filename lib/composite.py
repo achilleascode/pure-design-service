@@ -52,7 +52,7 @@ SLOT_X, SLOT_Y = POUCH_X, POUCH_Y
 SLOT_W, SLOT_H = POUCH_W, POUCH_H
 
 BADGE_SIZE = 72
-BADGE_Y = 28  # y position inside the pouch (above the cyan-design-area)
+BADGE_Y = 55  # clear of the pouch's rounded-corner arc
 
 
 def _load_pouche_scaled() -> tuple[Image.Image, np.ndarray]:
@@ -92,12 +92,12 @@ def _shading_layer(pouche: Image.Image) -> Image.Image:
     them into a soft-light overlay. Heavy blur first removes the BUD typography
     so only the body shading + drop-shadow remains.
     """
-    blurred = pouche.convert("L").filter(ImageFilter.GaussianBlur(radius=36))
+    blurred = pouche.convert("L").filter(ImageFilter.GaussianBlur(radius=18))
     arr = np.array(blurred).astype(np.float32)
     mean = arr.mean()
     # delta around mean → [-1, 1] scaled gain
     delta = (arr - mean) / max(1.0, mean)
-    delta = np.clip(delta, -0.35, 0.35)
+    delta = np.clip(delta, -0.55, 0.55)
     # Convert into an RGBA layer of mid-grey with variable alpha so it lightens
     # bright spots and darkens shadowed spots when blended in soft-light style.
     h, w = arr.shape
@@ -114,7 +114,7 @@ def _shading_layer(pouche: Image.Image) -> Image.Image:
     layer[dark, 0] = 0
     layer[dark, 1] = 0
     layer[dark, 2] = 0
-    alpha = (np.abs(delta) * 255 * 0.55).astype(np.uint8)
+    alpha = np.clip(np.abs(delta) * 255 * 1.4, 0, 255).astype(np.uint8)
     layer[..., 3] = alpha
     return Image.fromarray(layer, "RGBA")
 
@@ -134,7 +134,7 @@ def composite(ki_bytes: bytes) -> bytes:
     ki_mask = _ki_alpha_mask(silhouette)
 
     # 1. KI fitted into the pouch silhouette, capped above the warning band.
-    ai_fitted = ImageOps.fit(ki, (POUCH_W, POUCH_H), Image.LANCZOS, centering=(0.5, 0.45))
+    ai_fitted = ImageOps.fit(ki, (POUCH_W, POUCH_H), Image.LANCZOS, centering=(0.5, 0.52))
     ai_in_pouch = ai_fitted.convert("RGBA")
     ai_in_pouch.putalpha(ki_mask)
     backdrop.paste(ai_in_pouch, (POUCH_X, POUCH_Y), ai_in_pouch)
@@ -154,7 +154,7 @@ def composite(ki_bytes: bytes) -> bytes:
     # 4. Three badges in a single top row, positioned inside the pouch.
     badge_files = ("Label_Grammage.png", "Label_CoA.png", "Label_Food_Grade.png")
     n = len(badge_files)
-    inner_margin = 36
+    inner_margin = 60  # stays inside the pouch's rounded top corners
     span = POUCH_W - 2 * inner_margin
     gap = (span - n * BADGE_SIZE) // (n - 1)
     for i, fname in enumerate(badge_files):
