@@ -3,6 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 from pathlib import Path
 from PIL import Image, ImageOps
+import numpy as np
 
 
 TEMPLATE_W, TEMPLATE_H = 1080, 1350
@@ -32,9 +33,23 @@ BADGE_Y = 28
 BADGE_INNER_MARGIN = 36
 
 
+def _trim_near_white_border(img: Image.Image, threshold: int = 245) -> Image.Image:
+    """Gemini sometimes leaves a near-white padding on the sides of its output.
+    Crop the image down to its actual content bbox before we fit it into the
+    pouch slot, otherwise the white survives as visible stripes left and right
+    of the motif."""
+    rgb = np.array(img.convert("RGB"))
+    not_white = (rgb[:, :, 0] < threshold) | (rgb[:, :, 1] < threshold) | (rgb[:, :, 2] < threshold)
+    ys, xs = np.where(not_white)
+    if len(xs) == 0 or len(ys) == 0:
+        return img
+    return img.crop((int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1))
+
+
 def composite(ki_bytes: bytes) -> bytes:
     backdrop = Image.open(BACKDROP_PATH).convert("RGBA")
     ki = Image.open(BytesIO(ki_bytes)).convert("RGBA")
+    ki = _trim_near_white_border(ki)
 
     # 1. KI fits cleanly into the upper paper slot (above the baked warning).
     ai_fitted = ImageOps.fit(ki, (SLOT_W, SLOT_H), Image.LANCZOS, centering=(0.5, 0.5))
