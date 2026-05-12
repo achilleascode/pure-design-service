@@ -21,14 +21,20 @@ POUCH_X = 234
 POUCH_Y = 135 + (1035 - POUCH_H) // 2  # ~139
 _SCALE = POUCH_W / _RAW_POUCH[0]
 
-# Source-coord regions inside the 798x1338 pouch template
-_SRC_WARN_BBOX = (35, 893, 760, 1290)
-# Wipe the whole upper face (including baked badges) so the KI fills it cleanly
-# — we add our own badges on top in known positions.
-_SRC_KI_BBOX = (8, 8, 790, 880)
+# Source-coord regions inside the 798x1338 pouch template.
+# Warning band starts at y=855 (top of the dark frame) and ends at y=1305
+# (bottom of the dark frame). Everything between is the warning rectangle
+# from the pouch render and must stay structural — KI is not allowed in here.
+_SRC_WARN_BBOX = (35, 855, 760, 1305)
+# Cyan design area to wipe (above warning, below heat-seal) so the KI shows
+# through cleanly without the baked TRUE/BUD typography.
+_SRC_KI_BBOX = (8, 8, 790, 855)
 
-# Studio backdrop red, sampled from the floor — used to repaint the paper.
-_STUDIO_RED = (157, 57, 58, 255)
+# Sampling points used to derive the gradient that re-paints the paper area
+# so it blends seamlessly into the surrounding studio red — no visible seam at
+# the top of the paint where it meets the curtain.
+_PAPER_TOP_PROBE_Y = 70    # well inside the curtain, above the paper
+_PAPER_BOT_PROBE_Y = 1240  # well inside the floor, below the paper
 
 # Chroma-key threshold around the pouch cyan (RGB ~49, 184, 222) — wide enough
 # to also strip the slightly lighter heat-seal band at the very top.
@@ -80,10 +86,10 @@ def _strip_pouche_to_structure(arr: np.ndarray) -> Image.Image:
 
 
 def _ki_alpha_mask(silhouette: Image.Image) -> Image.Image:
-    """Pouch silhouette capped at the top edge of the warning band — KI is not
-    allowed to bleed into the yellow warning."""
+    """Pouch silhouette capped at the top edge of the warning's dark frame so
+    the KI never bleeds into the warning rectangle."""
     arr = np.array(silhouette)
-    arr[WARN_BBOX[1] - 2:, :] = 0
+    arr[WARN_BBOX[1]:, :] = 0
     return Image.fromarray(arr, "L")
 
 
@@ -119,15 +125,36 @@ def _shading_layer(pouche: Image.Image) -> Image.Image:
     return Image.fromarray(layer, "RGBA")
 
 
+def _seamless_paper_fill(backdrop: Image.Image) -> None:
+    """Repaint the paper area with a vertical gradient sampled from the curtain
+    above and the floor below the paper, so the painted strip merges into the
+    existing studio red without a visible colour seam."""
+    arr = np.array(backdrop)
+    sample_xs = (
+        PAPER_X + 5,
+        PAPER_X + PAPER_W // 4,
+        PAPER_X + 3 * PAPER_W // 4,
+        PAPER_X + PAPER_W - 5,
+    )
+    top_colors = [arr[_PAPER_TOP_PROBE_Y, x, :3] for x in sample_xs]
+    bot_colors = [arr[_PAPER_BOT_PROBE_Y, x, :3] for x in sample_xs]
+    top = np.median(top_colors, axis=0).astype(int)
+    bot = np.median(bot_colors, axis=0).astype(int)
+    draw = ImageDraw.Draw(backdrop)
+    h = max(1, PAPER_H - 1)
+    for y in range(PAPER_Y, PAPER_Y + PAPER_H):
+        t = (y - PAPER_Y) / h
+        color = tuple(int(round(top[c] * (1 - t) + bot[c] * t)) for c in range(3))
+        draw.line([(PAPER_X, y), (PAPER_X + PAPER_W - 1, y)], fill=color)
+
+
 def composite(ki_bytes: bytes) -> bytes:
     backdrop = Image.open(BACKDROP_PATH).convert("RGBA")
     ki = Image.open(BytesIO(ki_bytes)).convert("RGBA")
 
-    # 0. Cover the studio paper completely with the studio red so the rounded
-    # pouch corners do not reveal any white at top or sides.
-    ImageDraw.Draw(backdrop).rectangle(
-        (PAPER_X, PAPER_Y, PAPER_X + PAPER_W, PAPER_Y + PAPER_H), fill=_STUDIO_RED
-    )
+    # 0. Seamless re-paint of the paper area — no visible colour seam at the
+    # top where the paint used to meet the lighter curtain.
+    _seamless_paper_fill(backdrop)
 
     pouche, arr = _load_pouche_scaled()
     silhouette = pouche.split()[3]
