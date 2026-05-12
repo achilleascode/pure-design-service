@@ -28,9 +28,9 @@ WARNING_PATH = ASSETS_DIR / "warning.png"
 BUD_PATH = ASSETS_DIR / "bud_overlay.png"
 LABELS_DIR = ASSETS_DIR / "labels"
 
-BADGE_SIZE = 72
-BADGE_Y = 28
-BADGE_INNER_MARGIN = 36
+BADGE_SIZE = 110
+BADGE_Y = 30
+BADGE_INNER_MARGIN = 32
 
 
 def _trim_near_white_border(img: Image.Image, threshold: int = 245) -> Image.Image:
